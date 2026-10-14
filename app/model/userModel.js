@@ -27,6 +27,12 @@ const userSchema = new mongoose.Schema(
       minlength: [8, 'Password must be at least 8 characters long'],
       select: false, // Default query তে password ফিল্ড হাইড থাকবে
     },
+
+    resetPasswordOtp: { type: String, select: false },
+    resetPasswordExpires: { type: Date, select: false },
+    resetPasswordAttempts: { type: Number, default: 0, select: false },
+    resetPasswordToken: { type: String, select: false }, // notun
+    resetPasswordTokenExpires: { type: Date, select: false },
   },
   {
     timestamps: true,
