@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 
 const userSchema = new mongoose.Schema(
   {
@@ -25,13 +25,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters long'],
-      select: false, // Default query তে password ফিল্ড হাইড থাকবে
+      select: false,
     },
 
     resetPasswordOtp: { type: String, select: false },
     resetPasswordExpires: { type: Date, select: false },
     resetPasswordAttempts: { type: Number, default: 0, select: false },
-    resetPasswordToken: { type: String, select: false }, // notun
+    resetPasswordToken: { type: String, select: false },
     resetPasswordTokenExpires: { type: Date, select: false },
   },
   {
@@ -39,7 +39,6 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-// Save করার আগে password hash করার জন্য Pre-save Hook
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   const salt = await bcrypt.genSalt(10);

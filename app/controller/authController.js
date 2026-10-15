@@ -1,6 +1,7 @@
 const User = require('../model/userModel');
 const { generateToken } = require('../middleware/authMiddleware');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const sendEmail = require('../utils/sendEmail');
 
 // Helper to generate JWT Token
@@ -46,9 +47,6 @@ exports.register = async (req, res) => {
   }
 };
 
-// @desc    Login user
-// @route   POST /api/v1/auth/login
-// @access  Public
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -79,9 +77,6 @@ exports.login = async (req, res) => {
   }
 };
 
-// @desc    Get Current Logged in User Profile
-// @route   GET /api/v1/auth/me
-// @access  Private (Uses verifyToken middleware)
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -100,9 +95,6 @@ exports.getMe = async (req, res) => {
   }
 };
 
-// @desc    Send OTP to email for password reset
-// @route   POST /api/v1/auth/forgot-password
-// @access  Public
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -131,17 +123,72 @@ exports.forgotPassword = async (req, res) => {
         subject: 'Password Reset OTP (Career Orbit)',
         message: `Hi ${user.name},\n\nYour password reset OTP is: ${otp}\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, ignore this email.`,
         html: `
-          <div style="font-family:Arial,sans-serif;max-width:480px">
-            <h2>Career Orbit</h2>
-            <p>Hi ${user.name},</p>
-            <p>Your password reset OTP is:</p>
-            <p style="font-size:28px;letter-spacing:6px;font-weight:bold">${otp}</p>
-            <p>This OTP is valid for <b>10 minutes</b>.</p>
-            <p style="color:#888">If you did not request this, ignore this email.</p>
-          </div>`,
+  <div style="background-color:#f3f4f8;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="max-width:480px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td align="center" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);background-color:#4f46e5;padding:28px 24px;">
+          <h1 style="margin:0;font-size:24px;color:#ffffff;letter-spacing:0.5px;">Career Orbit</h1>
+          <p style="margin:6px 0 0;font-size:13px;color:#e0e7ff;">Password Reset Request</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:32px 28px 8px;color:#374151;">
+          <p style="margin:0 0 12px;font-size:16px;">Hi <b>${user.name}</b>,</p>
+          <p style="margin:0;font-size:15px;line-height:1.6;color:#4b5563;">
+            Use the code below to reset your password.
+          </p>
+        </td>
+      </tr>
+
+      <!-- OTP Box -->
+      <tr>
+        <td align="center" style="padding:20px 28px;">
+          <div style="display:inline-block;background-color:#eef2ff;border:2px dashed #6366f1;border-radius:12px;padding:16px 32px;">
+            <span style="font-size:34px;font-weight:bold;letter-spacing:10px;color:#4f46e5;font-family:'Courier New',monospace;">
+              ${otp}
+            </span>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Validity -->
+      <tr>
+        <td align="center" style="padding:0 28px 24px;">
+          <p style="margin:0;font-size:14px;color:#4b5563;">
+            This code is valid for <b style="color:#4f46e5;">10 minutes</b>.
+          </p>
+        </td>
+      </tr>
+
+      <!-- Security note -->
+      <tr>
+        <td style="padding:0 28px 28px;">
+          <div style="background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:12px 14px;">
+            <p style="margin:0;font-size:13px;line-height:1.5;color:#991b1b;">
+              If you didn't request this, you can safely ignore this email. Never share this code with anyone.
+            </p>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td align="center" style="background-color:#f9fafb;padding:16px 24px;border-top:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            &copy; ${new Date().getFullYear()} Career Orbit. All rights reserved.
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </div>`,
       });
     } catch (mailError) {
-      console.error('Email error:', mailError.message);
+      console.error('Email error:', mailError);
       user.resetPasswordOtp = undefined;
       user.resetPasswordExpires = undefined;
       user.resetPasswordAttempts = 0;
@@ -156,9 +203,6 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-// @desc    Verify OTP and get reset token
-// @route   POST /api/v1/auth/verify-otp
-// @access  Public
 exports.verifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -238,7 +282,7 @@ exports.resetPassword = async (req, res) => {
       return res.error(400, 'Reset session expired. Please start again.');
     }
 
-    user.password = newPassword; // pre-save hook hash korbe
+    user.password = newPassword;
     user.resetPasswordToken = undefined;
     user.resetPasswordTokenExpires = undefined;
     await user.save();
