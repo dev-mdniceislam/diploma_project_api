@@ -3,8 +3,7 @@ const { generateToken } = require('../middleware/authMiddleware');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const sendEmail = require('../utils/sendEmail');
-
-// Helper to generate JWT Token
+const escapeHtml = require('../utils/escapeHTML');
 
 exports.register = async (req, res) => {
   try {
@@ -41,9 +40,91 @@ exports.register = async (req, res) => {
       token,
     };
 
+    // Welcome email (email fail hole registration fail hobe na)
+    const safeName = escapeHtml(user.name);
+    const safeEmail = escapeHtml(user.email);
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Welcome to Career Orbit 🎉',
+        message: `Hi ${user.name},\n\nYour Career Orbit account has been created successfully.\n\nYou can now log in and start exploring jobs and growing your professional network.\n\nIf you did not create this account, please contact our support immediately.`,
+        html: `
+  <div style="background-color:#f3f4f8;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="max-width:480px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td align="center" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);background-color:#4f46e5;padding:28px 24px;">
+          <h1 style="margin:0;font-size:24px;color:#ffffff;letter-spacing:0.5px;">Career Orbit</h1>
+          <p style="margin:6px 0 0;font-size:13px;color:#e0e7ff;">Registration Successful</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:32px 28px 8px;color:#374151;">
+          <p style="margin:0 0 12px;font-size:16px;">Hi <b>${safeName}</b>,</p>
+          <p style="margin:0;font-size:15px;line-height:1.6;color:#4b5563;">
+            Welcome to <b>Career Orbit</b>! Your account has been created successfully. You're all set to explore job opportunities and grow your professional network.
+          </p>
+        </td>
+      </tr>
+
+      <!-- Success Badge -->
+      <tr>
+        <td align="center" style="padding:20px 28px;">
+          <div style="display:inline-block;background-color:#eef2ff;border:2px dashed #6366f1;border-radius:12px;padding:16px 32px;">
+            <span style="font-size:18px;font-weight:bold;color:#4f46e5;">
+              ✅ Account Created
+            </span>
+            <p style="margin:6px 0 0;font-size:13px;color:#6b7280;">${safeEmail}</p>
+          </div>
+        </td>
+      </tr>
+
+      <!-- What's next -->
+      <tr>
+        <td style="padding:0 28px 24px;color:#4b5563;">
+          <p style="margin:0 0 8px;font-size:14px;font-weight:bold;color:#374151;">What's next?</p>
+          <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;">
+            <li>Complete your profile</li>
+            <li>Browse the latest job feed</li>
+            <li>Connect with other professionals</li>
+          </ul>
+        </td>
+      </tr>
+
+      <!-- Security note -->
+      <tr>
+        <td style="padding:0 28px 28px;">
+          <div style="background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:12px 14px;">
+            <p style="margin:0;font-size:13px;line-height:1.5;color:#991b1b;">
+              If you didn't create this account, please ignore this email or contact our support team.
+            </p>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td align="center" style="background-color:#f9fafb;padding:16px 24px;border-top:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:12px;color:#9ca3af;">
+            &copy; ${new Date().getFullYear()} Career Orbit. All rights reserved.
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </div>`,
+      });
+    } catch (emailError) {
+      console.error('Welcome email failed:', emailError.message);
+    }
+
     return res.success(201, 'User registered successfully', userData);
   } catch (error) {
-    return res.error(500, error.message || 'Internal Server Error');
+    return res.error(500, 'Internal Server Error, Please try again.');
   }
 };
 
@@ -73,7 +154,7 @@ exports.login = async (req, res) => {
 
     return res.success(200, 'Login successful', userData);
   } catch (error) {
-    return res.error(500, error.message || 'Internal Server Error');
+    return res.error(500, 'Internal Server Error, Please try again.');
   }
 };
 
@@ -91,7 +172,7 @@ exports.getMe = async (req, res) => {
       email: user.email,
     });
   } catch (error) {
-    return res.error(500, error.message || 'Internal Server Error');
+    return res.error(500, 'Internal Server Error, Please try again.');
   }
 };
 
@@ -105,7 +186,6 @@ exports.forgotPassword = async (req, res) => {
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
-    // Email registered kina seta hide rakhi (user enumeration rodh)
     if (!user) {
       return res.success(200, 'If this email exists, an OTP has been sent');
     }
@@ -199,7 +279,7 @@ exports.forgotPassword = async (req, res) => {
 
     return res.success(200, 'If this email exists, an OTP has been sent');
   } catch (error) {
-    return res.error(500, error.message || 'Internal Server Error');
+    return res.error(500, 'Internal Server Error, Please try again.');
   }
 };
 
@@ -249,7 +329,7 @@ exports.verifyOtp = async (req, res) => {
 
     return res.success(200, 'OTP verified successfully', { resetToken });
   } catch (error) {
-    return res.error(500, error.message || 'Internal Server Error');
+    return res.error(500, 'Internal Server Error, Please try again.');
   }
 };
 
@@ -292,6 +372,6 @@ exports.resetPassword = async (req, res) => {
       'Password reset successful. Please login with your new password.',
     );
   } catch (error) {
-    return res.error(500, error.message || 'Internal Server Error');
+    return res.error(500, 'Internal Server Error, Please try again.');
   }
 };
