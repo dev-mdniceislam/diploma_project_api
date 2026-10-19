@@ -19,6 +19,7 @@ const authRoutes = require('./app/router/authRoutes');
 const app = express();
 
 //security and middleware
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
@@ -50,7 +51,7 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 //server run
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });

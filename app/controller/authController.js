@@ -1,377 +1,258 @@
-const User = require('../model/userModel');
-const { generateToken } = require('../middleware/authMiddleware');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
+const User = require('../model/userModel');
+const PendingRegistration = require('../model/pendingRegistrationModel');
+const { generateToken } = require('../middleware/authMiddleware');
 const sendEmail = require('../utils/sendEmail');
-const escapeHtml = require('../utils/escapeHTML');
+const catchAsync = require('../utils/catchAsync');
+const {
+  registerOtpEmail,
+  resetOtpEmail,
+  welcomeEmail,
+} = require('../utils/emailPallets');
+const {
+  RESEND_COOLDOWN_MS,
+  createOtp,
+  verifyOtp,
+  hashToken,
+} = require('../utils/otp');
 
-exports.register = async (req, res) => {
+// ---------------- helpers ----------------
+const normalizeEmail = (email) => email?.toLowerCase().trim();
+
+// Email pathay. Success hole true, fail hole false (throw kore na)
+const trySendEmail = async (options) => {
   try {
-    const { role, name, email, password } = req.body;
+    await sendEmail(options);
+    return true;
+  } catch (err) {
+    console.error('Email error:', err.message);
+    return false;
+  }
+};
 
-    // Validation Check
-    if (!role || !name || !email || !password) {
-      return res.error(400, 'Please provide all required fields');
+// Response a user er data (token thakle token soho)
+const userPayload = (user, token) => ({
+  id: user._id,
+  role: user.role,
+  name: user.name,
+  email: user.email,
+  ...(token && { token }),
+});
+
+const MAIL_FAIL_MSG = 'Email could not be sent. Please try again later.';
+const OTP_SENT_MSG = 'If this email exists, an OTP has been sent';
+
+// =====================================================
+// REGISTER (Step 1): email e OTP pathao
+// =====================================================
+exports.sendRegisterPin = catchAsync(async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  if (!email) return res.error(400, 'Please provide an email.');
+
+  if (await User.exists({ email })) {
+    return res.error(409, 'Email already registered. Please login.');
+  }
+
+  // Resend cooldown (spam rokhte)
+  const pending = await PendingRegistration.findOne({ email });
+  if (pending && Date.now() - pending.lastSentAt < RESEND_COOLDOWN_MS) {
+    return res.error(429, 'Please wait a minute before requesting a new code.');
+  }
+
+  const { otp, hash, expiresAt } = await createOtp();
+
+  await PendingRegistration.findOneAndUpdate(
+    { email },
+    { otp: hash, attempts: 0, lastSentAt: new Date(), expiresAt },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+
+  if (!(await trySendEmail({ email, ...registerOtpEmail(otp) }))) {
+    await PendingRegistration.deleteOne({ email });
+    return res.error(500, MAIL_FAIL_MSG);
+  }
+
+  return res.success(200, 'Verification code sent to your email');
+});
+
+// =====================================================
+// REGISTER (Step 2): OTP + baki data diye account khol
+// =====================================================
+exports.register = catchAsync(async (req, res) => {
+  const { role, name, password, otp } = req.body;
+  const email = normalizeEmail(req.body.email);
+
+  if (!role || !name || !email || !password || !otp) {
+    return res.error(400, 'Please provide all required fields');
+  }
+
+  if (await User.exists({ email })) {
+    return res.error(409, 'Email already registered. Please login.');
+  }
+
+  const pending = await PendingRegistration.findOne({ email });
+  const valid =
+    pending &&
+    (await verifyOtp(
+      {
+        hash: pending.otp,
+        expiresAt: pending.expiresAt,
+        attempts: pending.attempts,
+      },
+      otp,
+    ));
+
+  if (!valid) {
+    if (pending) {
+      pending.attempts += 1;
+      await pending.save();
     }
+    return res.error(400, 'Invalid code or code has expired');
+  }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.error(409, 'Email already registered. Please login.');
-    }
+  const user = await User.create({ role, name, email, password });
+  await pending.deleteOne(); // OTP ek bar-i use hobe
 
-    // Create user
-    const user = await User.create({
-      role,
-      name,
-      email,
-      password,
+  // Welcome email fail hole registration fail hobe na
+  await trySendEmail({ email: user.email, ...welcomeEmail(user) });
+
+  const token = generateToken(user._id, user.role);
+  return res.success(
+    201,
+    'User registered successfully',
+    userPayload(user, token),
+  );
+});
+
+// =====================================================
+// LOGIN / ME
+// =====================================================
+exports.login = catchAsync(async (req, res) => {
+  const { password } = req.body;
+  const email = normalizeEmail(req.body.email);
+
+  if (!email || !password) {
+    return res.error(400, 'Please provide email and password');
+  }
+
+  const user = await User.findOne({ email }).select('+password');
+  if (!user || !(await user.comparePassword(password))) {
+    return res.error(401, 'Invalid email or password');
+  }
+
+  const token = generateToken(user._id, user.role);
+  return res.success(200, 'Login successful', userPayload(user, token));
+});
+
+exports.getMe = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user.id);
+  if (!user) return res.error(404, 'User not found');
+
+  return res.success(200, 'Profile fetched successfully', userPayload(user));
+});
+
+// =====================================================
+// FORGOT PASSWORD (3 step)
+// =====================================================
+exports.forgotPassword = catchAsync(async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  if (!email) return res.error(400, 'Please provide your email address');
+
+  const user = await User.findOne({ email });
+  if (!user) return res.success(200, OTP_SENT_MSG);
+
+  const { otp, hash, expiresAt } = await createOtp();
+
+  Object.assign(user, {
+    resetPasswordOtp: hash,
+    resetPasswordExpires: expiresAt,
+    resetPasswordAttempts: 0,
+  });
+  await user.save({ validateBeforeSave: false });
+
+  if (
+    !(await trySendEmail({ email: user.email, ...resetOtpEmail(user, otp) }))
+  ) {
+    Object.assign(user, {
+      resetPasswordOtp: undefined,
+      resetPasswordExpires: undefined,
     });
-
-    // Generate JWT token
-    const token = generateToken(user._id, user.role);
-
-    // Response Data
-    const userData = {
-      id: user._id,
-      role: user.role,
-      name: user.name,
-      email: user.email,
-      token,
-    };
-
-    // Welcome email (email fail hole registration fail hobe na)
-    const safeName = escapeHtml(user.name);
-    const safeEmail = escapeHtml(user.email);
-
-    try {
-      await sendEmail({
-        email: user.email,
-        subject: 'Welcome to Career Orbit 🎉',
-        message: `Hi ${user.name},\n\nYour Career Orbit account has been created successfully.\n\nYou can now log in and start exploring jobs and growing your professional network.\n\nIf you did not create this account, please contact our support immediately.`,
-        html: `
-  <div style="background-color:#f3f4f8;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="max-width:480px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
-
-      <!-- Header -->
-      <tr>
-        <td align="center" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);background-color:#4f46e5;padding:28px 24px;">
-          <h1 style="margin:0;font-size:24px;color:#ffffff;letter-spacing:0.5px;">Career Orbit</h1>
-          <p style="margin:6px 0 0;font-size:13px;color:#e0e7ff;">Registration Successful</p>
-        </td>
-      </tr>
-
-      <!-- Body -->
-      <tr>
-        <td style="padding:32px 28px 8px;color:#374151;">
-          <p style="margin:0 0 12px;font-size:16px;">Hi <b>${safeName}</b>,</p>
-          <p style="margin:0;font-size:15px;line-height:1.6;color:#4b5563;">
-            Welcome to <b>Career Orbit</b>! Your account has been created successfully. You're all set to explore job opportunities and grow your professional network.
-          </p>
-        </td>
-      </tr>
-
-      <!-- Success Badge -->
-      <tr>
-        <td align="center" style="padding:20px 28px;">
-          <div style="display:inline-block;background-color:#eef2ff;border:2px dashed #6366f1;border-radius:12px;padding:16px 32px;">
-            <span style="font-size:18px;font-weight:bold;color:#4f46e5;">
-              ✅ Account Created
-            </span>
-            <p style="margin:6px 0 0;font-size:13px;color:#6b7280;">${safeEmail}</p>
-          </div>
-        </td>
-      </tr>
-
-      <!-- What's next -->
-      <tr>
-        <td style="padding:0 28px 24px;color:#4b5563;">
-          <p style="margin:0 0 8px;font-size:14px;font-weight:bold;color:#374151;">What's next?</p>
-          <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;">
-            <li>Complete your profile</li>
-            <li>Browse the latest job feed</li>
-            <li>Connect with other professionals</li>
-          </ul>
-        </td>
-      </tr>
-
-      <!-- Security note -->
-      <tr>
-        <td style="padding:0 28px 28px;">
-          <div style="background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:12px 14px;">
-            <p style="margin:0;font-size:13px;line-height:1.5;color:#991b1b;">
-              If you didn't create this account, please ignore this email or contact our support team.
-            </p>
-          </div>
-        </td>
-      </tr>
-
-      <!-- Footer -->
-      <tr>
-        <td align="center" style="background-color:#f9fafb;padding:16px 24px;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;font-size:12px;color:#9ca3af;">
-            &copy; ${new Date().getFullYear()} Career Orbit. All rights reserved.
-          </p>
-        </td>
-      </tr>
-
-    </table>
-  </div>`,
-      });
-    } catch (emailError) {
-      console.error('Welcome email failed:', emailError.message);
-    }
-
-    return res.success(201, 'User registered successfully', userData);
-  } catch (error) {
-    return res.error(500, 'Internal Server Error, Please try again.');
-  }
-};
-
-exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.error(400, 'Please provide email and password');
-    }
-
-    // Find user & select password explicitly
-    const user = await User.findOne({ email }).select('+password');
-    if (!user || !(await user.comparePassword(password))) {
-      return res.error(401, 'Invalid email or password');
-    }
-
-    const token = generateToken(user._id, user.role);
-
-    const userData = {
-      id: user._id,
-      role: user.role,
-      name: user.name,
-      email: user.email,
-      token,
-    };
-
-    return res.success(200, 'Login successful', userData);
-  } catch (error) {
-    return res.error(500, 'Internal Server Error, Please try again.');
-  }
-};
-
-exports.getMe = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.error(404, 'User not found');
-    }
-
-    return res.success(200, 'Profile fetched successfully', {
-      id: user._id,
-      role: user.role,
-      name: user.name,
-      email: user.email,
-    });
-  } catch (error) {
-    return res.error(500, 'Internal Server Error, Please try again.');
-  }
-};
-
-exports.forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.error(400, 'Please provide your email address');
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-
-    if (!user) {
-      return res.success(200, 'If this email exists, an OTP has been sent');
-    }
-
-    const otp = crypto.randomInt(100000, 1000000).toString();
-
-    user.resetPasswordOtp = await bcrypt.hash(otp, 10);
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 min
-    user.resetPasswordAttempts = 0;
     await user.save({ validateBeforeSave: false });
-
-    try {
-      await sendEmail({
-        email: user.email,
-        subject: 'Password Reset OTP (Career Orbit)',
-        message: `Hi ${user.name},\n\nYour password reset OTP is: ${otp}\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, ignore this email.`,
-        html: `
-  <div style="background-color:#f3f4f8;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="100%" style="max-width:480px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.08);">
-
-      <!-- Header -->
-      <tr>
-        <td align="center" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);background-color:#4f46e5;padding:28px 24px;">
-          <h1 style="margin:0;font-size:24px;color:#ffffff;letter-spacing:0.5px;">Career Orbit</h1>
-          <p style="margin:6px 0 0;font-size:13px;color:#e0e7ff;">Password Reset Request</p>
-        </td>
-      </tr>
-
-      <!-- Body -->
-      <tr>
-        <td style="padding:32px 28px 8px;color:#374151;">
-          <p style="margin:0 0 12px;font-size:16px;">Hi <b>${user.name}</b>,</p>
-          <p style="margin:0;font-size:15px;line-height:1.6;color:#4b5563;">
-            Use the code below to reset your password.
-          </p>
-        </td>
-      </tr>
-
-      <!-- OTP Box -->
-      <tr>
-        <td align="center" style="padding:20px 28px;">
-          <div style="display:inline-block;background-color:#eef2ff;border:2px dashed #6366f1;border-radius:12px;padding:16px 32px;">
-            <span style="font-size:34px;font-weight:bold;letter-spacing:10px;color:#4f46e5;font-family:'Courier New',monospace;">
-              ${otp}
-            </span>
-          </div>
-        </td>
-      </tr>
-
-      <!-- Validity -->
-      <tr>
-        <td align="center" style="padding:0 28px 24px;">
-          <p style="margin:0;font-size:14px;color:#4b5563;">
-            This code is valid for <b style="color:#4f46e5;">10 minutes</b>.
-          </p>
-        </td>
-      </tr>
-
-      <!-- Security note -->
-      <tr>
-        <td style="padding:0 28px 28px;">
-          <div style="background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;padding:12px 14px;">
-            <p style="margin:0;font-size:13px;line-height:1.5;color:#991b1b;">
-              If you didn't request this, you can safely ignore this email. Never share this code with anyone.
-            </p>
-          </div>
-        </td>
-      </tr>
-
-      <!-- Footer -->
-      <tr>
-        <td align="center" style="background-color:#f9fafb;padding:16px 24px;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;font-size:12px;color:#9ca3af;">
-            &copy; ${new Date().getFullYear()} Career Orbit. All rights reserved.
-          </p>
-        </td>
-      </tr>
-
-    </table>
-  </div>`,
-      });
-    } catch (mailError) {
-      console.error('Email error:', mailError);
-      user.resetPasswordOtp = undefined;
-      user.resetPasswordExpires = undefined;
-      user.resetPasswordAttempts = 0;
-      await user.save({ validateBeforeSave: false });
-
-      return res.error(500, 'Email could not be sent. Please try again later.');
-    }
-
-    return res.success(200, 'If this email exists, an OTP has been sent');
-  } catch (error) {
-    return res.error(500, 'Internal Server Error, Please try again.');
+    return res.error(500, MAIL_FAIL_MSG);
   }
-};
 
-exports.verifyOtp = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
+  return res.success(200, OTP_SENT_MSG);
+});
 
-    if (!email || !otp) {
-      return res.error(400, 'Please provide email and OTP');
-    }
+exports.verifyOtp = catchAsync(async (req, res) => {
+  const { otp } = req.body;
+  const email = normalizeEmail(req.body.email);
 
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-    }).select('+resetPasswordOtp +resetPasswordExpires +resetPasswordAttempts');
+  if (!email || !otp) return res.error(400, 'Please provide email and OTP');
 
-    if (
-      !user ||
-      !user.resetPasswordOtp ||
-      !user.resetPasswordExpires ||
-      user.resetPasswordExpires < Date.now() ||
-      user.resetPasswordAttempts >= 5
-    ) {
-      return res.error(400, 'Invalid OTP or OTP has expired');
-    }
+  const user = await User.findOne({ email }).select(
+    '+resetPasswordOtp +resetPasswordExpires +resetPasswordAttempts',
+  );
 
-    const isMatch = await bcrypt.compare(String(otp), user.resetPasswordOtp);
+  const valid =
+    user &&
+    (await verifyOtp(
+      {
+        hash: user.resetPasswordOtp,
+        expiresAt: user.resetPasswordExpires,
+        attempts: user.resetPasswordAttempts,
+      },
+      otp,
+    ));
 
-    if (!isMatch) {
+  if (!valid) {
+    if (user) {
       user.resetPasswordAttempts += 1;
       await user.save({ validateBeforeSave: false });
-      return res.error(400, 'Invalid OTP or OTP has expired');
     }
-
-    // OTP thik. Ekhon reset token banao (OTP ek bar-i use hobe)
-    const resetToken = crypto.randomBytes(32).toString('hex');
-
-    user.resetPasswordToken = crypto
-      .createHash('sha256')
-      .update(resetToken)
-      .digest('hex');
-    user.resetPasswordTokenExpires = Date.now() + 10 * 60 * 1000; // 10 min
-
-    user.resetPasswordOtp = undefined;
-    user.resetPasswordExpires = undefined;
-    user.resetPasswordAttempts = 0;
-    await user.save({ validateBeforeSave: false });
-
-    return res.success(200, 'OTP verified successfully', { resetToken });
-  } catch (error) {
-    return res.error(500, 'Internal Server Error, Please try again.');
+    return res.error(400, 'Invalid OTP or OTP has expired');
   }
-};
 
-// @desc    Reset password using reset token
-// @route   POST /api/v1/auth/reset-password
-// @access  Public
-exports.resetPassword = async (req, res) => {
-  try {
-    const { resetToken, newPassword } = req.body;
+  // OTP thik. Reset token banao (OTP ek bar-i use hobe)
+  const resetToken = crypto.randomBytes(32).toString('hex');
 
-    if (!resetToken || !newPassword) {
-      return res.error(400, 'Please provide reset token and new password');
-    }
+  Object.assign(user, {
+    resetPasswordToken: hashToken(resetToken),
+    resetPasswordTokenExpires: Date.now() + 10 * 60 * 1000, // 10 min
+    resetPasswordOtp: undefined,
+    resetPasswordExpires: undefined,
+    resetPasswordAttempts: 0,
+  });
+  await user.save({ validateBeforeSave: false });
 
-    if (newPassword.length < 8) {
-      return res.error(400, 'Password must be at least 8 characters long');
-    }
+  return res.success(200, 'OTP verified successfully', { resetToken });
+});
 
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(String(resetToken))
-      .digest('hex');
+exports.resetPassword = catchAsync(async (req, res) => {
+  const { resetToken, newPassword } = req.body;
 
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordTokenExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.error(400, 'Reset session expired. Please start again.');
-    }
-
-    user.password = newPassword;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordTokenExpires = undefined;
-    await user.save();
-
-    return res.success(
-      200,
-      'Password reset successful. Please login with your new password.',
-    );
-  } catch (error) {
-    return res.error(500, 'Internal Server Error, Please try again.');
+  if (!resetToken || !newPassword) {
+    return res.error(400, 'Please provide reset token and new password');
   }
-};
+  if (newPassword.length < 8) {
+    return res.error(400, 'Password must be at least 8 characters long');
+  }
+
+  const user = await User.findOne({
+    resetPasswordToken: hashToken(resetToken),
+    resetPasswordTokenExpires: { $gt: Date.now() },
+  });
+  if (!user) {
+    return res.error(400, 'Reset session expired. Please start again.');
+  }
+
+  user.password = newPassword;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordTokenExpires = undefined;
+  await user.save();
+
+  return res.success(
+    200,
+    'Password reset successful. Please login with your new password.',
+  );
+});

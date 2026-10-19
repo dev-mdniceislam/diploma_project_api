@@ -9,12 +9,13 @@ const {
   forgotPassword,
   verifyOtp,
   resetPassword,
+  sendRegisterPin,
 } = require('../controller/authController');
 const { verifyToken } = require('../middleware/authMiddleware');
 
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -23,6 +24,7 @@ const otpLimiter = rateLimit({
   },
 });
 
+router.post('/register-otp', otpLimiter, sendRegisterPin);
 router.post('/register', register);
 router.post('/login', login);
 router.get('/me', verifyToken, getMe);
