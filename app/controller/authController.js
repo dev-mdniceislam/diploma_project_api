@@ -159,7 +159,8 @@ exports.forgotPassword = catchAsync(async (req, res) => {
   if (!email) return res.error(400, 'Please provide your email address');
 
   const user = await User.findOne({ email });
-  if (!user) return res.success(200, OTP_SENT_MSG);
+  if (!user)
+    return res.success(404, 'User not found. Please Registration now.');
 
   const { otp, hash, expiresAt } = await createOtp();
 
