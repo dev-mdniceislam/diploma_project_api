@@ -35,33 +35,72 @@ const sscSchema = new Schema(
   { _id: false },
 );
 
-const projectSchema = new Schema({
-  category: { type: String, trim: true },
-  title: { type: String, required: true, trim: true },
-  description: { type: String, trim: true },
-  technologies: [{ type: String, trim: true }],
-  icon: { type: String, default: 'code' },
-  liveUrl: String,
-  repoUrl: String,
-});
-
-const applicationSchema = new Schema({
-  company: { type: String, required: true, trim: true },
-  position: { type: String, required: true, trim: true },
-  type: { type: String, enum: ['attachment', 'job'], required: true },
-  appliedAt: { type: Date, default: Date.now },
-  status: {
-    type: String,
-    enum: ['pending', 'shortlisted', 'interview', 'selected', 'rejected'],
-    default: 'pending',
+const projectSchema = new Schema(
+  {
+    category: { type: String, trim: true },
+    title: { type: String, required: true, trim: true },
+    description: { type: String, trim: true },
+    technologies: [{ type: String, trim: true }],
+    icon: { type: String, default: 'code' },
+    liveUrl: String,
+    repoUrl: String,
   },
-  message: { type: String, trim: true },
-});
+  {
+    toJSON: {
+      virtuals: true,
+      transform: (_doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  },
+);
 
-const certificateSchema = new Schema({
-  title: { type: String, required: true, trim: true },
-  issuer: { type: String, trim: true },
-});
+const applicationSchema = new Schema(
+  {
+    company: { type: String, required: true, trim: true },
+    position: { type: String, required: true, trim: true },
+    type: { type: String, enum: ['attachment', 'job'], required: true },
+    appliedAt: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ['pending', 'shortlisted', 'interview', 'selected', 'rejected'],
+      default: 'pending',
+    },
+    message: { type: String, trim: true },
+  },
+  {
+    toJSON: {
+      virtuals: true,
+      transform: (_doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  },
+);
+
+const certificateSchema = new Schema(
+  {
+    title: { type: String, required: true, trim: true },
+    issuer: { type: String, trim: true },
+  },
+  {
+    toJSON: {
+      virtuals: true,
+      transform: (_doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  },
+);
 
 const socialLinkSchema = new Schema(
   {
@@ -87,12 +126,12 @@ const studentProfileSchema = new Schema(
     avatarUrl: { type: String, default: '' },
     coverImage: { type: String, default: '' },
 
-    department: { type: String, required: true, trim: true },
-    institute: { type: String, required: true, trim: true },
-    boardRoll: { type: String, required: true, unique: true, index: true },
-    registration: { type: String, required: true, unique: true },
-    session: { type: String, required: true },
-    semester: { type: Number, required: true, min: 1, max: 8 },
+    department: { type: String, default: '', trim: true },
+    institute: { type: String, default: '', trim: true },
+    boardRoll: { type: String, trim: true, unique: true, sparse: true },
+    registration: { type: String, trim: true, unique: true, sparse: true },
+    session: { type: String, default: '' },
+    semester: { type: Number, min: 1, max: 8 },
     cgpa: { type: Number, min: 0, max: 4 },
     cgpaScale: { type: Number, default: 4.0 },
 
@@ -112,6 +151,7 @@ const studentProfileSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+
     phone: { type: String, trim: true },
     location: { type: String, trim: true },
     cvUrl: { type: String, default: null },

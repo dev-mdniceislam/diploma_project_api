@@ -9,13 +9,14 @@ const asyncHandler = (fn) => (req, res, next) =>
 // Fields a student may NOT set themselves
 const PROTECTED_FIELDS = [
   'user',
+  'email', // User.email-এর সাথে মিল রাখতে
   'isVerified',
   'nocStatus',
   'nocNumber',
   'cgpa',
   'avatarUrl',
   'coverImage',
-  'cvUrl', // changed only through /media upload
+  'cvUrl',
 ];
 
 const stripProtected = (body) => {
@@ -27,28 +28,20 @@ const stripProtected = (body) => {
 // Loads the profile and makes sure the caller is its owner (or an admin).
 // Returns null after sending the error response.
 const loadOwnedProfile = async (req, res) => {
-  const profile = await StudentProfile.findById(req.params.id);
-  if (!profile) {
-    res.error(404, 'Student profile not found');
+  const { id } = req.params;
+  if (id !== String(req.user.id) && req.user.role !== 'admin') {
+    res.error(403, 'You are not allowed to modify this profile');
     return null;
   }
-  const isOwner = profile.user.toString() === String(req.user.id);
-  if (!isOwner && req.user.role !== 'admin') {
-    res.error(403, 'You are not allowed to modify this profile');
+  const profile = await StudentProfile.findOne({ user: id });
+  if (!profile) {
+    res.error(404, 'Student profile not found');
     return null;
   }
   return profile;
 };
 
 // ---------- Profile CRUD ----------
-
-exports.createProfile = asyncHandler(async (req, res) => {
-  const profile = await StudentProfile.create({
-    ...stripProtected(req.body),
-    user: req.user.id,
-  });
-  res.success(201, 'Profile created successfully', profile);
-});
 
 exports.getMyProfile = asyncHandler(async (req, res) => {
   const profile = await StudentProfile.findOne({ user: req.user.id });
@@ -92,7 +85,7 @@ exports.getProfiles = asyncHandler(async (req, res) => {
 });
 
 exports.getProfileById = asyncHandler(async (req, res) => {
-  const profile = await StudentProfile.findById(req.params.id);
+  const profile = await StudentProfile.findOne({ user: req.params.id });
   if (!profile) return res.error(404, 'Student profile not found');
   res.success(200, 'Profile fetched successfully', profile);
 });
@@ -162,13 +155,10 @@ exports.verifyAndUpdateNoc = asyncHandler(async (req, res) => {
   if (nocStatus) update.nocStatus = nocStatus;
   if (nocNumber !== undefined) update.nocNumber = nocNumber;
 
-  const profile = await StudentProfile.findByIdAndUpdate(
-    req.params.id,
+  const profile = await StudentProfile.findOneAndUpdate(
+    { user: req.params.id },
     update,
-    {
-      new: true,
-      runValidators: true,
-    },
+    { returnDocument: 'after', runValidators: true },
   );
   if (!profile) return res.error(404, 'Student profile not found');
   res.success(200, 'Verification updated successfully', profile);
@@ -234,7 +224,7 @@ exports.addApplication = asyncHandler(async (req, res) => {
 
 // company / admin only (see router)
 exports.updateApplicationStatus = asyncHandler(async (req, res) => {
-  const profile = await StudentProfile.findById(req.params.id);
+  const profile = await StudentProfile.findOne({ user: req.params.id });
   if (!profile) return res.error(404, 'Student profile not found');
 
   const application = profile.applications.id(req.params.applicationId);

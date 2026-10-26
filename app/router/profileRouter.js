@@ -23,7 +23,7 @@ router.use(verifyToken); // every route needs a valid token
 
 // Profile
 router.get('/me', ctrl.getMyProfile); // keep above '/:id'
-router.route('/').get(ctrl.getProfiles).post(ctrl.createProfile);
+router.route('/').get(ctrl.getProfiles);
 
 router
   .route('/:id')
@@ -32,7 +32,7 @@ router
   .delete(ctrl.deleteProfile);
 
 // Media (multipart/form-data: avatar, cover, cv)
-router.patch('/:id/media', mediaUpload, ctrl.uploadMedia);
+router.patch('/media/:id', mediaUpload, ctrl.uploadMedia);
 
 // Admin: verification + NOC
 router.patch('/:id/verification', restrictTo('admin'), ctrl.verifyAndUpdateNoc);
@@ -41,7 +41,7 @@ router.patch('/:id/verification', restrictTo('admin'), ctrl.verifyAndUpdateNoc);
 router.put('/:id/skills', ctrl.updateSkills);
 
 // Projects
-router.post('/:id/projects', ctrl.addProject);
+router.post('/projects/:id', ctrl.addProject);
 router
   .route('/:id/projects/:projectId')
   .patch(ctrl.updateProject)

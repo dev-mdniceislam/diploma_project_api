@@ -4,6 +4,8 @@ const PendingRegistration = require('../model/pendingRegistrationModel');
 const { generateToken } = require('../middleware/authMiddleware');
 const sendEmail = require('../utils/sendEmail');
 const catchAsync = require('../utils/catchAsync');
+const StudentProfile = require('../model/profileModel');
+const ALLOWED_ROLES = ['student', 'company'];
 const {
   registerOtpEmail,
   resetOtpEmail,
@@ -78,12 +80,62 @@ exports.sendRegisterPin = catchAsync(async (req, res) => {
 // =====================================================
 // REGISTER (Step 2): OTP + baki data diye account khol
 // =====================================================
+// exports.register = catchAsync(async (req, res) => {
+//   const { role, name, password, otp } = req.body;
+//   const email = normalizeEmail(req.body.email);
+
+//   if (!role || !name || !email || !password || !otp) {
+//     return res.error(400, 'Please provide all required fields');
+//   }
+
+//   if (await User.exists({ email })) {
+//     return res.error(409, 'Email already registered. Please login.');
+//   }
+
+//   const pending = await PendingRegistration.findOne({ email });
+//   const valid =
+//     pending &&
+//     (await verifyOtp(
+//       {
+//         hash: pending.otp,
+//         expiresAt: pending.expiresAt,
+//         attempts: pending.attempts,
+//       },
+//       otp,
+//     ));
+
+//   if (!valid) {
+//     if (pending) {
+//       pending.attempts += 1;
+//       await pending.save();
+//     }
+//     return res.error(400, 'Invalid code or code has expired');
+//   }
+
+//   const user = await User.create({ role, name, email, password });
+//   await pending.deleteOne(); // OTP ek bar-i use hobe
+
+//   // Welcome email fail hole registration fail hobe na
+//   await trySendEmail({ email: user.email, ...welcomeEmail(user) });
+
+//   const token = generateToken(user._id, user.role);
+//   return res.success(
+//     201,
+//     'User registered successfully',
+//     userPayload(user, token),
+//   );
+// });
+
 exports.register = catchAsync(async (req, res) => {
   const { role, name, password, otp } = req.body;
   const email = normalizeEmail(req.body.email);
 
   if (!role || !name || !email || !password || !otp) {
     return res.error(400, 'Please provide all required fields');
+  }
+
+  if (!ALLOWED_ROLES.includes(role)) {
+    return res.error(400, 'Invalid role');
   }
 
   if (await User.exists({ email })) {
@@ -111,9 +163,24 @@ exports.register = catchAsync(async (req, res) => {
   }
 
   const user = await User.create({ role, name, email, password });
+
+  // Student হলে খালি profile তৈরি। Fail করলে user-ও মুছে দাও
+  if (user.role === 'student') {
+    try {
+      await StudentProfile.create({
+        user: user._id,
+        name: user.name,
+        email: user.email,
+      });
+    } catch (err) {
+      await User.findByIdAndDelete(user._id);
+      console.log(err.message);
+      throw err;
+    }
+  }
+
   await pending.deleteOne(); // OTP ek bar-i use hobe
 
-  // Welcome email fail hole registration fail hobe na
   await trySendEmail({ email: user.email, ...welcomeEmail(user) });
 
   const token = generateToken(user._id, user.role);
@@ -123,7 +190,6 @@ exports.register = catchAsync(async (req, res) => {
     userPayload(user, token),
   );
 });
-
 // =====================================================
 // LOGIN / ME
 // =====================================================
