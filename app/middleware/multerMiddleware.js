@@ -13,11 +13,12 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'gia_uploads',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    folder: 'career_orbit_uploads',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+    resource_type: 'auto',
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 module.exports = { upload, cloudinary };
