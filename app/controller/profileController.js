@@ -99,20 +99,20 @@ exports.updateProfile = asyncHandler(async (req, res) => {
   res.success(200, 'Profile updated successfully', profile);
 });
 
-exports.deleteProfile = asyncHandler(async (req, res) => {
-  const profile = await loadOwnedProfile(req, res);
-  if (!profile) return;
+// exports.deleteProfile = asyncHandler(async (req, res) => {
+//   const profile = await loadOwnedProfile(req, res);
+//   if (!profile) return;
 
-  const publicIds = [profile.avatarUrl, profile.coverImage, profile.cvUrl]
-    .filter(Boolean)
-    .map(getPublicIdFromUrl)
-    .filter(Boolean);
+//   const publicIds = [profile.avatarUrl, profile.coverImage, profile.cvUrl]
+//     .filter(Boolean)
+//     .map(getPublicIdFromUrl)
+//     .filter(Boolean);
 
-  await profile.deleteOne();
-  await deleteFileFromCloudinary(publicIds);
+//   await profile.deleteOne();
+//   await deleteFileFromCloudinary(publicIds);
 
-  res.success(200, 'Profile deleted successfully');
-});
+//   res.success(200, 'Profile deleted successfully');
+// });
 
 // ---------- Media upload (avatar / cover / cv) ----------
 // multer-storage-cloudinary puts the uploaded file URL in file.path
@@ -243,7 +243,6 @@ exports.withdrawApplication = asyncHandler(async (req, res) => {
 
   const application = profile.applications.id(req.params.applicationId);
   if (!application) return res.error(404, 'Application not found');
-
   application.deleteOne();
   await profile.save();
   res.success(200, 'Application withdrawn successfully');
