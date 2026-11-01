@@ -25,11 +25,8 @@ router.use(verifyToken); // every route needs a valid token
 router.get('/me', ctrl.getMyProfile); // keep above '/:id'
 router.route('/').get(ctrl.getProfiles);
 
-router
-  .route('/:id')
-  .get(ctrl.getProfileById)
-  .patch(ctrl.updateProfile)
-  .delete(ctrl.deleteProfile);
+router.route('/:id').get(ctrl.getProfileById).patch(ctrl.updateProfile);
+// .delete(ctrl.deleteProfile);
 
 // Media (multipart/form-data: avatar, cover, cv)
 router.patch('/media/:id', mediaUpload, ctrl.uploadMedia);
