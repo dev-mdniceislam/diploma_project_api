@@ -186,17 +186,17 @@ exports.addProject = asyncHandler(async (req, res) => {
   res.success(201, 'Project added successfully', profile.projects);
 });
 
-exports.updateProject = asyncHandler(async (req, res) => {
-  const profile = await loadOwnedProfile(req, res);
-  if (!profile) return;
+// exports.updateProject = asyncHandler(async (req, res) => {
+//   const profile = await loadOwnedProfile(req, res);
+//   if (!profile) return;
 
-  const project = profile.projects.id(req.params.projectId);
-  if (!project) return res.error(404, 'Project not found');
+//   const project = profile.projects.id(req.params.projectId);
+//   if (!project) return res.error(404, 'Project not found');
 
-  project.set(req.body);
-  await profile.save();
-  res.success(200, 'Project updated successfully', project);
-});
+//   project.set(req.body);
+//   await profile.save();
+//   res.success(200, 'Project updated successfully', project);
+// });
 
 exports.deleteProject = asyncHandler(async (req, res) => {
   const profile = await loadOwnedProfile(req, res);

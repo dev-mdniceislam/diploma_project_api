@@ -30,4 +30,11 @@ const generateToken = (id, role) => {
   });
 };
 
-module.exports = { verifyToken, generateToken };
+const restrictTo =
+  (...roles) =>
+  (req, res, next) =>
+    roles.includes(req.user?.role)
+      ? next()
+      : res.error(403, 'You do not have permission to perform this action');
+
+module.exports = { verifyToken, generateToken, restrictTo };

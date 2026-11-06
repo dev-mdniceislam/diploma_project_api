@@ -14,6 +14,7 @@ const errorHandler = require('./app/middleware/errorHandlerMiddleware');
 //Routes Imports
 const authRoutes = require('./app/router/authRoutes');
 const profileRoutes = require('./app/router/profileRouter');
+const job = require('./app/router/jobPostRouter');
 //const webshellRoute = require('./src/routes/webShellRoutes/webshellRoutes');
 
 //module scaffolding
@@ -40,7 +41,8 @@ app.get('/', (req, res) => {
 //Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/profile', profileRoutes);
-//app.use('/api/v1/webshell', webshellRoute);
+app.use('/api/v1/job', job);
+//app.use('/api/v1/webshell', job);
 
 // Routes handler
 app.use((req, res, next) => {
