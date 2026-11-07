@@ -21,14 +21,33 @@ const applicationSchema = new mongoose.Schema(
       required: true,
       index: true,
     }, // job-er owner, query faster korar jonno
+    shortMessage: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     status: {
       type: String,
       enum: ['applied', 'shortlisted', 'rejected', 'hired'],
       default: 'applied',
     },
-    letter: String,
+    cv: {
+      type: String,
+      trim: true,
+      default: '',
+    },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: {
+      transform: (doc, ret) => {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  },
 );
 
 // Ek student ek job-e duibar apply korte parbe na

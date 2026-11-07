@@ -98,7 +98,17 @@ const jobSchema = new mongoose.Schema(
       default: 'open',
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: {
+      transform: (_doc, ret) => {
+        ret.jobId = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  },
 );
 
 jobSchema.index({ postedBy: 1, createdAt: -1 });

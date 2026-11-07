@@ -37,6 +37,7 @@ const companyProfileSchema = new mongoose.Schema(
     email: {
       type: String,
       trim: true,
+      required: [true, 'Email is required'],
       lowercase: true,
     },
 
@@ -50,12 +51,14 @@ const companyProfileSchema = new mongoose.Schema(
       type: String,
       trim: true,
       maxlength: [3000, 'About can be at most 3000 characters'],
+      default: '',
     },
 
     hrEmail: {
       type: String,
       trim: true,
       lowercase: true,
+      default: '',
     },
 
     helplineNumber: {
@@ -64,12 +67,12 @@ const companyProfileSchema = new mongoose.Schema(
       default: '',
     },
 
-    website: { type: String, trim: true },
-    location: { type: String, trim: true },
+    website: { type: String, trim: true, default: '' },
+    location: { type: String, trim: true, default: '' },
     employeeCount: { type: String, trim: true, default: '0' },
 
-    profileUrl: { type: String, trim: true },
-    coverImageUrl: { type: String, trim: true },
+    profileUrl: { type: String, trim: true, default: '' },
+    coverImageUrl: { type: String, trim: true, default: '' },
 
     engineeringDomains: [engineeringDomainSchema],
     benefits: [{ type: String, trim: true }],

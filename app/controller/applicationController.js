@@ -1,6 +1,6 @@
 const Application = require('../model/applicationModel');
 const Job = require('../model/jobPostModel');
-const StudentProfile = require('../model/studentProfileModel');
+const StudentProfile = require('../model/profileModel');
 const catchAsync = require('../utils/catchAsync');
 
 // @desc    Student's own applications

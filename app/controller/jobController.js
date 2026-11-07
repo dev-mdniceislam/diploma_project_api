@@ -1,5 +1,7 @@
 const Job = require('../model/jobPostModel');
 const catchAsync = require('../utils/catchAsync');
+const CompanyProfile = require('../model/companyProfileModel');
+const mongoose = require('mongoose');
 
 const ALLOWED_FIELDS = [
   'title',
@@ -31,7 +33,7 @@ exports.createJob = catchAsync(async (req, res) => {
 
   const job = await Job.create({
     ...jobData,
-    postedBy: req.user._id,
+    postedBy: req.user.id,
   });
 
   return res.success(201, 'Job posted successfully', job);
@@ -40,25 +42,25 @@ exports.createJob = catchAsync(async (req, res) => {
 exports.getJobById = catchAsync(async (req, res) => {
   const { id } = req.params;
 
-  // Invalid ID hole DB-te query na kore aage-i reject korun
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.error(400, 'Invalid job ID');
   }
 
-  const job = await Job.findById(id).populate({
-    path: 'postedBy',
-    select: 'name companyName logo isVerified', // User model-e ja ache shudhu seta-i
-  });
+  const job = await Job.findById(id).select('-__v').lean();
 
   if (!job) {
     return res.error(404, 'Job not found');
   }
 
-  const now = new Date();
-  const isApplicationOpen = job.status === 'open' && job.deadline > now;
+  const company = await CompanyProfile.findOne({ user: job.postedBy })
+    .select('companyName industryCategory profileUrl isVerified isBtebApproved')
+    .lean();
+
+  const isApplicationOpen = job.status === 'open' && job.deadline > new Date();
 
   return res.success(200, 'Job fetched successfully', {
-    ...job.toObject(),
+    ...job,
+    postedBy: company ? { id: company._id, ...company, _id: undefined } : null,
     isApplicationOpen,
   });
 });
