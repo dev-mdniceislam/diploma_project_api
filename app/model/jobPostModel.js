@@ -42,7 +42,7 @@ const jobSchema = new mongoose.Schema(
     requirements: [{ type: String, trim: true }],
 
     // যেমন: ['CST', 'EEE', 'Robotics & Mechatronics']
-    departments: [{ type: String, trim: true }],
+    departments: [{ type: String, trim: true}],
 
     location: {
       type: String,

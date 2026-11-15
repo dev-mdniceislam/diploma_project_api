@@ -170,7 +170,7 @@ exports.getAllJobs = catchAsync(async (req, res) => {
 exports.myPostedJobs = catchAsync(async (req, res) => {
   const jobs = await Job.find({ postedBy: req.user.id })
     .select(
-      'title jobType location stipend deadline status vacancies accommodation createdAt',
+      'title jobType location departments stipend deadline status vacancies accommodation createdAt',
     )
     .sort({ createdAt: -1 })
     .lean();
