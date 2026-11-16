@@ -41,8 +41,10 @@ const jobSchema = new mongoose.Schema(
     responsibilities: [{ type: String, trim: true }],
     requirements: [{ type: String, trim: true }],
 
-    // যেমন: ['CST', 'EEE', 'Robotics & Mechatronics']
-    departments: [{ type: String, trim: true}],
+    // যেমন: ['Computer', 'Electrical', 'Mechatronics', 'Power']
+    departments: [{ type: String, trim: true }],
+
+    benefits: [{ type: String, trim: true }],
 
     location: {
       type: String,
@@ -50,7 +52,7 @@ const jobSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // মাসিক স্টাইপেন্ড (BDT)
+    // মাসিক স্টাইপেন্ড (BDT) - Type Number করা হয়েছে যাতে min ভ্যালিডেশন কাজ করে
     stipend: {
       type: Number,
       min: [0, 'Stipend cannot be negative'],
@@ -100,10 +102,12 @@ const jobSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    // যদি _id রাখতে চান তবে নিচের toJSON অংশটি বাদ দিতে পারেন,
+    // অথবা jobId রাখতে চাইলে এটি এভাবে রাখতে পারেন:
     toJSON: {
       transform: (_doc, ret) => {
         ret.jobId = ret._id;
-        delete ret._id;
+        benefits: ([{ type: String, trim: true }], delete ret._id);
         delete ret.__v;
         return ret;
       },

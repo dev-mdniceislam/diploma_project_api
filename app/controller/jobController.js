@@ -13,6 +13,7 @@ const ALLOWED_FIELDS = [
   'departments',
   'location',
   'stipend',
+  'benefits',
   'semester',
   'educationRequirement',
   'vacancies',
@@ -62,7 +63,9 @@ exports.getJobById = catchAsync(async (req, res) => {
   }
 
   const company = await CompanyProfile.findOne({ user: job.postedBy })
-    .select('companyName industryCategory profileUrl isVerified isBtebApproved')
+    .select(
+      'companyName industryCategory profileUrl isVerified isBtebApproved helplineNumber about website location hrEmail',
+    )
     .lean();
 
   const isApplicationOpen = job.status === 'open' && job.deadline > new Date();
@@ -170,7 +173,7 @@ exports.getAllJobs = catchAsync(async (req, res) => {
 exports.myPostedJobs = catchAsync(async (req, res) => {
   const jobs = await Job.find({ postedBy: req.user.id })
     .select(
-      'title jobType location departments stipend deadline status vacancies accommodation createdAt',
+      'title jobType location departments benefits stipend deadline status vacancies accommodation createdAt',
     )
     .sort({ createdAt: -1 })
     .lean();
