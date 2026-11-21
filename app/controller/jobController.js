@@ -125,7 +125,9 @@ exports.getAllJobs = catchAsync(async (req, res) => {
 
   const [jobs, total] = await Promise.all([
     Job.find(filter)
-      .select('title jobType location stipend deadline postedBy createdAt')
+      .select(
+        'title jobType location stipend departments description deadline postedBy createdAt',
+      )
       .sort(sort)
       .skip(skip)
       .limit(limit)

@@ -60,8 +60,13 @@ const jobSchema = new mongoose.Schema(
     },
 
     semester: {
-      type: String, // যেমন: '8th'
+      type: String,
       trim: true,
+      maxlength: 3,
+      enum: {
+        values: ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'],
+        message: '{VALUE} is not a valid semester',
+      },
     },
 
     educationRequirement: {
