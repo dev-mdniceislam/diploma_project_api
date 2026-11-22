@@ -39,6 +39,24 @@ const pickAllowedFields = (body) =>
   }, {});
 
 exports.createJob = catchAsync(async (req, res) => {
+  const companyProfile = await CompanyProfile.findOne({ user: req.user.id })
+    .select('isVerified')
+    .lean();
+
+  if (!companyProfile) {
+    return res.error(
+      403,
+      'Company profile not found. Please complete your company profile first.',
+    );
+  }
+
+  if (!companyProfile.isVerified) {
+    return res.error(
+      403,
+      'Your company profile must be verified before you can post a job.',
+    );
+  }
+
   const jobData = pickAllowedFields(req.body);
 
   const job = await Job.create({

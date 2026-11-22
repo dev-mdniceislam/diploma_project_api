@@ -6,7 +6,7 @@ const sendEmail = require('../utils/sendEmail');
 const catchAsync = require('../utils/catchAsync');
 const StudentProfile = require('../model/profileModel');
 const companyProfile = require('../model/companyProfileModel');
-const ALLOWED_ROLES = ['student', 'company'];
+const ALLOWED_ROLES = ['student', 'company', 'admin'];
 const {
   registerOtpEmail,
   resetOtpEmail,
@@ -172,10 +172,37 @@ exports.login = catchAsync(async (req, res) => {
 });
 
 exports.getMe = catchAsync(async (req, res) => {
-  const user = await User.findById(req.user.id);
+  const user = await User.findById(req.user.id).lean();
   if (!user) return res.error(404, 'User not found');
 
-  return res.success(200, 'Profile fetched successfully', userPayload(user));
+  let profile = null;
+  let isVerified = false;
+
+  if (user.role === 'student') {
+    const student = await StudentProfile.findOne({ user: user._id })
+      .select('avatarUrl isVerified')
+      .lean();
+    profile = student?.avatarUrl ?? null;
+    isVerified = student?.isVerified ?? false;
+  }
+
+  if (user.role === 'company') {
+    const company = await companyProfile
+      .findOne({ user: user._id })
+      .select('profileUrl isVerified')
+      .lean();
+    profile = company?.profileUrl ?? null;
+    isVerified = company?.isVerified ?? false;
+  }
+
+  return res.success(200, 'Profile fetched successfully', {
+    id: user._id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    isVerified,
+    profile,
+  });
 });
 
 // =====================================================

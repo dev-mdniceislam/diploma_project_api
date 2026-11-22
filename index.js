@@ -16,6 +16,8 @@ const authRoutes = require('./app/router/authRoutes');
 const profileRoutes = require('./app/router/profileRouter');
 const job = require('./app/router/jobPostRouter');
 const application = require('./app/router/applicationJobRouter');
+const companyVerification = require('./app/router/verificationRequestRouter');
+const adminRoutes = require('./app/router/admin_router');
 //const webshellRoute = require('./src/routes/webShellRoutes/webshellRoutes');
 
 //module scaffolding
@@ -44,7 +46,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/job', job);
 app.use('/api/v1/application', application);
-//app.use('/api/v1/webshell', job);
+app.use('/api/v1/companyVerfy', companyVerification);
+app.use('/api/v1/admin', adminRoutes);
 
 // Routes handler
 app.use((req, res, next) => {
