@@ -20,7 +20,7 @@ const companyMediaUpload = upload.fields([
 ]);
 
 // ---------- Public ----------
-router.get('/companies/:companyId', companyCtrl.getCompanyProfileById);
+router.get('/public/:id', companyCtrl.getPublicProfileById);
 
 // ---------- Protected: এর নিচের সব route-এ token লাগবে ----------
 router.use(verifyToken);

@@ -112,7 +112,7 @@ const jobSchema = new mongoose.Schema(
     toJSON: {
       transform: (_doc, ret) => {
         ret.jobId = ret._id;
-        benefits: ([{ type: String, trim: true }], delete ret._id);
+        delete ret._id;
         delete ret.__v;
         return ret;
       },

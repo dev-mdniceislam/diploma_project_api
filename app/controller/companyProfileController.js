@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 const CompanyProfile = require('../model/companyProfileModel');
+const StudentProfile = require('../model/profileModel');
+const User = require('../model/userModel');
+const Job = require('../model/jobPostModel');
+const Application = require('../model/applicationModel');
 const catchAsync = require('../utils/catchAsync');
 const deleteFileFromCloudinary = require('../middleware/fileDeleteMiddleware');
 const getPublicIdFromUrl = require('../middleware/getPublicIdFromURL');
@@ -19,6 +23,11 @@ const EDITABLE_FIELDS = [
   'benefits',
   'campusPartners',
 ];
+
+const PROFILE_MODELS = {
+  student: StudentProfile,
+  company: CompanyProfile,
+};
 
 // multer field name -> schema field
 const MEDIA_FIELDS = {
@@ -46,7 +55,9 @@ const sanitizeCampusPartners = (partners) => {
 // @route   GET /api/company-profiles/me
 // @access  Private (company)
 exports.getMyCompanyProfile = catchAsync(async (req, res) => {
-  const profile = await CompanyProfile.findOne({ user: req.user.id });
+  const companyObjectId = new mongoose.Types.ObjectId(req.user.id);
+
+  const profile = await CompanyProfile.findOne({ user: companyObjectId });
 
   if (!profile) {
     return res.error(
@@ -55,7 +66,41 @@ exports.getMyCompanyProfile = catchAsync(async (req, res) => {
     );
   }
 
-  return res.success(200, 'Company profile fetched successfully', profile);
+  // Job count, shob job memory-te load na kore
+  const [jobCounts] = await Job.aggregate([
+    { $match: { postedBy: companyObjectId } },
+    {
+      $group: {
+        _id: null,
+        totalCirculars: { $sum: 1 },
+        industrialAttachments: {
+          $sum: {
+            $cond: [{ $eq: ['$jobType', 'industrial-attachment'] }, 1, 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  const totalCirculars = jobCounts?.totalCirculars ?? 0;
+  const industrialAttachments = jobCounts?.industrialAttachments ?? 0;
+
+  // Application-e company field already ache, tai job id lagbe na
+  const applicationsReceived = await Application.countDocuments({
+    company: companyObjectId,
+  });
+
+  const data = {
+    ...profile.toJSON(),
+    stats: {
+      totalCirculars,
+      jobCirculars: totalCirculars - industrialAttachments,
+      industrialAttachments,
+      applicationsReceived,
+    },
+  };
+
+  return res.success(200, 'Company profile fetched successfully', data);
 });
 
 // @desc    Create or update logged-in company's profile (text fields only)
@@ -127,24 +172,79 @@ exports.uploadMedia = catchAsync(async (req, res) => {
 // @desc    Get any company's public profile by ID
 // @route   GET /api/company-profiles/:companyId
 // @access  Public
-exports.getCompanyProfileById = catchAsync(async (req, res) => {
-  const { companyId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(companyId)) {
-    return res.error(400, 'Invalid company ID');
+const STUDENT_PUBLIC_FIELDS = [
+  'name',
+  'avatarUrl',
+  'coverImage',
+  'bio',
+  'department',
+  'institute',
+  'session',
+  'semester',
+  'location',
+  'isVerified',
+  'skills',
+  'projects',
+  'socialLinks',
+  'ssc',
+];
+
+const COMPANY_PUBLIC_FIELDS = [
+  'companyName',
+  'profileUrl',
+  'coverImageUrl',
+  'about',
+  'industryCategory',
+  'employeeCount',
+  'location',
+  'website',
+  'benefits',
+  'engineeringDomains',
+  'campusPartners',
+  'isVerified',
+  'isBtebApproved',
+];
+
+// Object theke shudhu allowed key gulo rakhe
+const pick = (obj, keys) =>
+  keys.reduce((acc, key) => {
+    if (obj[key] !== undefined) acc[key] = obj[key];
+    return acc;
+  }, {});
+
+exports.getPublicProfileById = catchAsync(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.error(400, 'Invalid user ID');
   }
 
-  const profile = await CompanyProfile.findOne({ user: companyId }).select(
-    '-__v',
-  );
+  const user = await User.findById(id).select('role').lean();
+  if (!user) {
+    return res.error(404, 'User not found');
+  }
 
+  const Model = PROFILE_MODELS[user.role];
+  if (!Model) {
+    return res.error(404, 'Public profile not available for this user');
+  }
+
+  const profile = await Model.findOne({ user: id }).select('-__v').lean();
   if (!profile) {
-    return res.error(404, 'Company not found');
+    return res.error(404, 'Profile not found');
   }
 
-  // Public response থেকে email বাদ
-  const data = profile.toJSON();
-  delete data.email;
+  let data;
 
-  return res.success(200, 'Company profile fetched successfully', data);
+  if (user.role === 'student') {
+    data = pick(profile, STUDENT_PUBLIC_FIELDS);
+  } else {
+    data = pick(profile, COMPANY_PUBLIC_FIELDS);
+  }
+
+  return res.success(200, 'Public profile fetched successfully', {
+    role: user.role,
+    ...data,
+  });
 });
